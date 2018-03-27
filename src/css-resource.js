@@ -21,8 +21,9 @@ function fixupCSSUrls(address, css) {
 }
 
 class CSSResource {
-  constructor(address: string) {
+  constructor(address: string, removeInjectedStyles: boolean) {
     this.address = address;
+    this.removeInjectedStyles = removeInjectedStyles;
     this._scoped = null;
     this._global = false;
     this._alreadyGloballyInjected = false;
@@ -49,7 +50,11 @@ class CSSResource {
         this._scoped.css = text;
         if (this._global) {
           this._alreadyGloballyInjected = true;
-          DOM.injectStyles(text);
+          if (this.removeInjectedStyles === true) {
+            this._scoped.styleNode = DOM.injectStyles(text);
+          } else {
+            DOM.injectStyles(text);
+          }
         }
       });
   }
@@ -59,6 +64,14 @@ class CSSViewEngineHooks {
   constructor(owner: CSSResource) {
     this.owner = owner;
     this.css = null;
+    if (owner.removeInjectedStyles === true) {
+      this.beforeUnbind = () => {
+        if (this._global && this.owner._alreadyGloballyInjected) {
+          DOM.removeNode(this.styleNode);
+          this.owner._alreadyGloballyInjected = false;
+        }
+      }
+    }
   }
 
   beforeCompile(content: DocumentFragment, resources: ViewResources, instruction: ViewCompileInstruction): void {
@@ -68,14 +81,18 @@ class CSSViewEngineHooks {
       let styleNode = DOM.injectStyles(this.css, content, true);
       styleNode.setAttribute('scoped', 'scoped');
     } else if (this._global && !this.owner._alreadyGloballyInjected) {
-      DOM.injectStyles(this.css);
+      if (this.owner.removeInjectedStyles === true) {
+        this.styleNode = DOM.injectStyles(this.css);
+      } else {
+        DOM.injectStyles(this.css);
+      }
       this.owner._alreadyGloballyInjected = true;
     }
   }
 }
 
-export function _createCSSResource(address: string): Function {
-  @resource(new CSSResource(address))
+export function _createCSSResource(address: string, removeInjectedStyles: boolean): Function {
+  @resource(new CSSResource(address, removeInjectedStyles))
   class ViewCSS extends CSSViewEngineHooks {}
   return ViewCSS;
 }
